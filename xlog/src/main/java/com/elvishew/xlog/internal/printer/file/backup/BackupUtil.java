@@ -19,11 +19,14 @@ package com.elvishew.xlog.internal.printer.file.backup;
 import com.elvishew.xlog.printer.file.backup.BackupStrategy2;
 
 import java.io.File;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class BackupUtil {
 
   /**
-   * Shift existed backups if needed, and backup the logging file.
+   * Backup the logging file, shifting existing backups if needed (when maxBackupIndex has been
+   * reached)
    *
    * @param loggingFile    the logging file
    * @param backupStrategy the strategy should be use when backing up
@@ -37,17 +40,19 @@ public class BackupUtil {
     if (maxBackupIndex > 0) {
       backupFile = new File(path, backupStrategy.getBackupFileName(loggingFileName, maxBackupIndex));
       if (backupFile.exists()) {
-        backupFile.delete();
-      }
-      for (int i = maxBackupIndex - 1; i > 0; i--) {
-        backupFile = new File(path, backupStrategy.getBackupFileName(loggingFileName, i));
-        if (backupFile.exists()) {
-          nextBackupFile = new File(path, backupStrategy.getBackupFileName(loggingFileName, i + 1));
-          backupFile.renameTo(nextBackupFile);
+        // maxBackupIndex is already being used, overwrite the oldest file
+        File oldestBackupFile = findOldestFile(path, maxBackupIndex);
+        loggingFile.renameTo(oldestBackupFile);
+      } else {
+        // maxBackupIndex not reached yet; use the lowest available index for the backup file
+        for (int i = 1; i <= maxBackupIndex; i++) {
+          nextBackupFile = new File(path, backupStrategy.getBackupFileName(loggingFileName, i));
+          if (!nextBackupFile.exists()) {
+            loggingFile.renameTo(nextBackupFile);
+            break;
+          }
         }
       }
-      nextBackupFile = new File(path, backupStrategy.getBackupFileName(loggingFileName, 1));
-      loggingFile.renameTo(nextBackupFile);
     } else if (maxBackupIndex == BackupStrategy2.NO_LIMIT) {
       for (int i = 1; i < Integer.MAX_VALUE; i++) {
         nextBackupFile = new File(path, backupStrategy.getBackupFileName(loggingFileName, i));
@@ -60,6 +65,32 @@ public class BackupUtil {
       // Illegal maxBackIndex, could not come here.
     }
   }
+
+  private static File findOldestFile(String dirPath, int max) {
+    File dir = new File(dirPath);
+    if (dir == null || !dir.isDirectory())
+      return null;
+
+    Pattern pattern = Pattern.compile(".*\\.(\\d+)$");
+    File oldestFile = null;
+
+    for (File file : dir.listFiles()) {
+      if (!file.isFile()) continue;
+
+      Matcher matcher = pattern.matcher(file.getName());
+      if (matcher.matches()) {
+        int n = Integer.parseInt(matcher.group(1));
+        if (n >= 1 && n <= max) {
+          if (oldestFile == null || file.lastModified() < oldestFile.lastModified()) {
+            oldestFile = file;
+          }
+        }
+      }
+    }
+
+    return oldestFile;
+  }
+
 
   /**
    * Check if a {@link BackupStrategy2} is valid, will throw a exception if invalid.
