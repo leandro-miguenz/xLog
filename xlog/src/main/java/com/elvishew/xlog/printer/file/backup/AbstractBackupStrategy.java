@@ -28,6 +28,6 @@ public abstract class AbstractBackupStrategy implements BackupStrategy2 {
 
   @Override
   public String getBackupFileName(String fileName, int backupIndex) {
-    return fileName + ".bak." + backupIndex;
+    return fileName + ".bak." + String.format("%02d", backupIndex);
   }
 }
